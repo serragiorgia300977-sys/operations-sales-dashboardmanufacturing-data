@@ -1,0 +1,14 @@
+Lead_Time_P90 = 
+CALCULATE(
+    PERCENTILE.INC(gold_operations_summary[Lead_Time_Medio], 0.90),
+    ALLEXCEPT(gold_operations_summary, gold_operations_summary[Data])
+)
+
+Fatturato_Alert_Pct = 
+DIVIDE(
+    CALCULATE(SUM(gold_operations_summary[Fatturato_Totale]), gold_operations_summary[Defect_Status] = "ALERT"),
+    SUM(gold_operations_summary[Fatturato_Totale]),
+    0
+)
+
+Fatturato_A_Rischio = SUM(gold_operations_summary[Fatturato_Totale]) * [Fatturato_Alert_Pct]
