@@ -1,0 +1,37 @@
+from pyspark.sql.functions import col, avg, sum, mean, count, when
+
+# 1. Carichiamo i dati puliti dal livello Silver (Silver Layer)
+df_silver = spark.read.table("silver_operations_sales")
+
+# 2. Creiamo il Gold Layer aggregando i dati per Data (con metriche e controlli di stato)
+df_gold = df_silver.groupBy("Data").agg(
+    count("Ordini").alias("Totale_Ordini"),
+    sum("Fatturato").alias("Fatturato_Totale"),
+    sum("Costi").alias("Costi_Totali"),
+    sum("Margine").alias("Margine_Totale"),
+    mean("Lead_Time_h").alias("Lead_Time_Medio"),
+    sum("Fermi_min").alias("Fermi_Totali_min"),
+    mean("Inattivita_pct").alias("Inattivita_Media_pct"),
+    avg("Defect_Rate").alias("Avg_Defect_Rate"),
+    avg("Conversion_Rate").alias("Avg_Conversion_Rate")
+).orderBy("Data")
+
+# 3. Aggiungiamo le logiche di controllo basate sui target aziendali (Alert Status / Stato di allerta)
+df_gold_final = df_gold.withColumn(
+    "Lead_Time_Status", 
+    when(col("Lead_Time_Medio") <= 24, "OK").otherwise("ALERT")
+).withColumn(
+    "Defect_Status", 
+    when(col("Avg_Defect_Rate") <= 2.0, "OK").otherwise("ALERT")
+)
+
+# 4. Salvataggio ufficiale con l'opzione per aggiornare lo schema della tabella Delta
+df_gold_final.write.format("delta") \
+    .option("overwriteSchema", "true") \
+    .mode("overwrite") \
+    .saveAsTable("gold_operations_summary")
+
+print("Livello Gold completato con successo: tabella 'gold_operations_summary' aggiornata e pronta per Power BI!")
+
+# 5. Anteprima della tabella Gold
+display(df_gold_final.limit(5))
