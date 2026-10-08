@@ -1,0 +1,28 @@
+import pandas as pd
+from pyspark.sql.functions import col, when, lit
+
+# 1. Carichiamo i dati dal livello Bronze
+df_bronze = spark.sql("SELECT * FROM bronze_operations_sales")
+
+# 2. Gestione dei valori nulli (Pulizia dei record sporchi in Costi e Lead_Time_h)
+df_silver_cleaned = df_bronze.na.drop(subset=["Costi", "Lead_Time_h"])
+
+# 3. Feature Engineering: creazione di tutte le metriche e KPI derivati
+df_silver = df_silver_cleaned \
+    .withColumn("Margine", col("Fatturato") - col("Costi")) \
+    .withColumn("Margine_Pct", (col("Margine") / col("Fatturato")) * 100) \
+    .withColumn("Defect_Rate", (col("Difetti") / col("Unita")) * 100) \
+    .withColumn("Conversion_Rate", (col("Conversioni") / col("Visite_Web")) * 100) \
+    .withColumn("Inattivita_pct", ((col("Fermi_min") / 60) / col("Lead_Time_h")) * 100)
+
+# 4. Calcolo statistico del P90 e flag degli ordini critici (Tail risk)
+df_pd = df_silver.toPandas()
+p90 = df_pd["Lead_Time_h"].quantile(0.90)
+
+df_silver = spark.createDataFrame(df_pd)
+df_silver = df_silver.withColumn("Is_Critico", col("Lead_Time_h") > p90)
+
+# 5. Salvataggio ufficiale della tabella completa nel livello Silver
+df_silver.write.format("delta").mode("overwrite").saveAsTable("silver_operations_sales")
+
+print(f"Tabella silver_operations_sales creata con successo! (Soglia P90: {p90:.2f} ore)")
